@@ -71,11 +71,8 @@ app.get("/api/launcher/drops", async (req, res) => {
   res.json([]);
 });
 
-// GET /api/launcher/news (from game server memory + DB fallback)
+// GET /api/launcher/news (always from DB — edits/deletes only update DB)
 app.get("/api/launcher/news", async (req, res) => {
-  const live = await fetchFromGame("/launcher/news");
-  if (live && live.length > 0) return res.json(live);
-
   try {
     const [rows] = await pool.query(`
       SELECT title, message, DATE_FORMAT(created_at, '%Y-%m-%d') as date
@@ -85,11 +82,28 @@ app.get("/api/launcher/news", async (req, res) => {
   } catch { res.json([]); }
 });
 
-// POST /api/launcher/news (from Discord bot)
-app.post("/api/launcher/news", (req, res) => {
+// POST /api/launcher/news (from Discord bot — add, edit, delete)
+app.post("/api/launcher/news", async (req, res) => {
   if (req.headers.authorization !== SECRET) return res.status(403).json({ error: "forbidden" });
 
-  const { title, message } = req.body;
+  const { action, discordId, title, message } = req.body;
+
+  if (action === "delete" && discordId) {
+    // Delete from database
+    await pool.execute("DELETE FROM launcher_news WHERE discord_id = ?", [discordId]).catch(() => {});
+    console.log("News deleted: " + discordId);
+    return res.json({ ok: true });
+  }
+
+  if (action === "edit" && discordId && title) {
+    // Update in database
+    await pool.execute("UPDATE launcher_news SET title = ?, message = ? WHERE discord_id = ?",
+      [title, message || "", discordId]).catch(() => {});
+    console.log("News edited: " + discordId);
+    return res.json({ ok: true });
+  }
+
+  // Default: add
   if (!title) return res.status(400).json({ error: "title required" });
 
   // Forward to game server in-memory store
@@ -102,8 +116,9 @@ app.post("/api/launcher/news", (req, res) => {
   fwd.write(postData);
   fwd.end();
 
-  // Persist to database
-  pool.execute("INSERT INTO launcher_news (title, message) VALUES (?, ?)", [title, message || ""])
+  // Persist to database with discord message ID
+  pool.execute("INSERT INTO launcher_news (title, message, discord_id) VALUES (?, ?, ?)",
+    [title, message || "", discordId || null])
     .catch((err) => console.error("DB insert failed:", err.message));
 
   res.json({ ok: true });
