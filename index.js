@@ -114,8 +114,8 @@ app.post("/api/launcher/news", async (req, res) => {
     } catch {}
   }
 
-  // Save to database only (single source of truth)
-  pool.execute("INSERT INTO launcher_news (title, message, discord_id) VALUES (?, ?, ?)",
+  // Save to database — INSERT IGNORE to prevent duplicates
+  pool.execute("INSERT IGNORE INTO launcher_news (title, message, discord_id) VALUES (?, ?, ?)",
     [title, message || "", discordId || null])
     .catch((err) => console.error("DB insert failed:", err.message));
 
