@@ -106,6 +106,14 @@ app.post("/api/launcher/news", async (req, res) => {
   // Default: add
   if (!title) return res.status(400).json({ error: "title required" });
 
+  // Deduplicate — skip if discord_id already exists
+  if (discordId) {
+    try {
+      const [existing] = await pool.query("SELECT id FROM launcher_news WHERE discord_id = ?", [discordId]);
+      if (existing.length > 0) return res.json({ ok: true, skipped: true });
+    } catch {}
+  }
+
   // Save to database only (single source of truth)
   pool.execute("INSERT INTO launcher_news (title, message, discord_id) VALUES (?, ?, ?)",
     [title, message || "", discordId || null])
