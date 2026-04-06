@@ -106,17 +106,7 @@ app.post("/api/launcher/news", async (req, res) => {
   // Default: add
   if (!title) return res.status(400).json({ error: "title required" });
 
-  // Forward to game server in-memory store
-  const postData = JSON.stringify({ title, message: message || "" });
-  const fwd = http.request({
-    hostname: "127.0.0.1", port: 8086, path: "/launcher/news/add", method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: SECRET, "Content-Length": Buffer.byteLength(postData) },
-  }, () => {});
-  fwd.on("error", () => {});
-  fwd.write(postData);
-  fwd.end();
-
-  // Persist to database with discord message ID
+  // Save to database only (single source of truth)
   pool.execute("INSERT INTO launcher_news (title, message, discord_id) VALUES (?, ?, ?)",
     [title, message || "", discordId || null])
     .catch((err) => console.error("DB insert failed:", err.message));
